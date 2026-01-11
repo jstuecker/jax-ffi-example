@@ -72,6 +72,56 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: SimpleDirectSummationForce                */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error SimpleDirectSummationForceFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer xm,
+    ffi::Result<ffi::AnyBuffer> force_out,
+    float epsilon,
+    int gap,
+    size_t block_size
+) {
+    int n = xm.element_count()/4;
+    dim3 blockDim(block_size);
+    dim3 gridDim((n + blockDim.x - 1)/blockDim.x);
+    size_t smem = blockDim.x * sizeof(float3);
+    
+    // Build a bundled argument list for cudaLaunchKernel
+    // For pointers we need to create a pointer to the pointer
+    PosMass* xm_val = reinterpret_cast<PosMass*>(xm.untyped_data());
+    float3* force_out_val = reinterpret_cast<float3*>(force_out->untyped_data());
+
+    void* args[] = {
+        &xm_val,
+        &force_out_val,
+        &n,
+        &epsilon,
+        &gap
+    };
+    cudaLaunchKernel((const void*)SimpleDirectSummationForce, gridDim, blockDim, args, smem, stream);
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    SimpleDirectSummationForceFFI, SimpleDirectSummationForceFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // xm
+        .Ret<ffi::AnyBuffer>() // force_out
+        .Attr<float>("epsilon")
+        .Attr<int>("gap")
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: DirectSummationForce                      */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -124,5 +174,6 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 NB_MODULE(ffi_example, m) {
     m.def("Multiply", []() { return EncapsulateFfiCall(&MultiplyFFI); });
+    m.def("SimpleDirectSummationForce", []() { return EncapsulateFfiCall(&SimpleDirectSummationForceFFI); });
     m.def("DirectSummationForce", []() { return EncapsulateFfiCall(&DirectSummationForceFFI); });
 }

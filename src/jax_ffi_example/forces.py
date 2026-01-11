@@ -8,6 +8,7 @@ from jax_ffi_example_cuda import ffi_example
 # ------------------------------------------------------------------------------------------------ #
 
 jax.ffi.register_ffi_target("Multiply", ffi_example.Multiply(), platform="CUDA")
+jax.ffi.register_ffi_target("SimpleDirectSummationForce", ffi_example.SimpleDirectSummationForce(), platform="CUDA")
 jax.ffi.register_ffi_target("DirectSummationForce", ffi_example.DirectSummationForce(), platform="CUDA")
 
 def div_ceil(a, b):
@@ -31,7 +32,22 @@ def multiply(a: jax.Array, b: jax.Array, block_size=64):
     return out
 multiply.jit = jax.jit(multiply, static_argnames=("block_size",))
 
-def direct_summation_force(
+def simple_cuda_force(
+        pos: jax.Array, mass: jax.Array, softening: float, block_size=64, gap=0
+    ) -> jax.Array:
+    assert pos.dtype == mass.dtype == jnp.float32
+    assert (pos.shape[:-1] == mass.shape) and (pos.shape[-1] == 3)
+
+    posmass = jnp.concatenate([pos, mass[..., None]], axis=-1)
+
+    outputs = (jax.ShapeDtypeStruct(pos.shape, mass.dtype),)
+
+    return jax.ffi.ffi_call("SimpleDirectSummationForce", outputs)(
+        posmass, epsilon=np.float32(softening), block_size=np.uint64(block_size), gap=np.int32(gap)
+    )[0]
+simple_cuda_force.jit = jax.jit(simple_cuda_force, static_argnames=("softening", "block_size", "gap"))
+
+def cuda_force(
         pos: jax.Array, mass: jax.Array, softening: float, block_size=64
     ) -> jax.Array:
     assert pos.dtype == mass.dtype == jnp.float32
@@ -44,13 +60,13 @@ def direct_summation_force(
     return jax.ffi.ffi_call("DirectSummationForce", outputs)(
         posmass, epsilon=np.float32(softening), block_size=np.uint64(block_size),
     )[0]
-direct_summation_force.jit = jax.jit(direct_summation_force, static_argnames=("softening", "block_size"))
+cuda_force.jit = jax.jit(cuda_force, static_argnames=("softening", "block_size"))
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Jax reference Code                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_summation_force_jax(
+def jax_force(
         pos: jax.Array, mass: jax.Array, n2lim: int = 1e8, softening: float = 1e-5
     ) -> jax.Array:
     N = pos.shape[0]
@@ -74,4 +90,4 @@ def direct_summation_force_jax(
     _, forces = jax.lax.scan(handle_interval, None, jnp.arange(nev, dtype=jnp.int32))
 
     return jnp.concatenate(forces)[0:N]
-direct_summation_force_jax.jit = jax.jit(direct_summation_force_jax, static_argnames=("n2lim",))
+jax_force.jit = jax.jit(jax_force, static_argnames=("n2lim",))

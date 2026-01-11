@@ -23,7 +23,7 @@ __global__ void Multiply(
     const float* x,
     const float* y,
     float* output,
-    size_t num
+    const size_t num
 ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if(idx > num)
@@ -32,7 +32,7 @@ __global__ void Multiply(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                       Simple Force Kernel                                      */
+/*                                        Bad Force Kernel                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
 __device__ __forceinline__ float3 get_force(PosMass p1, PosMass p2, float eps2){
@@ -43,6 +43,39 @@ __device__ __forceinline__ float3 get_force(PosMass p1, PosMass p2, float eps2){
 
     return make_float3(dx.x*mrinv3, dx.y*mrinv3, dx.z*mrinv3);
 }
+
+__global__ void SimpleDirectSummationForce(
+    const PosMass *xm,
+    float3 *force_out,
+    const int n,
+    const float epsilon,
+    const int gap
+) {
+    float epsilon2 = epsilon * epsilon;
+
+    int ipart = blockIdx.x * blockDim.x + threadIdx.x;
+    PosMass xmi = xm[ipart];
+    if(ipart >= n)
+        return;
+    
+    float3 force = {0.f, 0.f, 0.f};
+
+    for(int j=0; j<n; j++) {
+        int ipartj = j;
+        if(gap > 0) // emulate a non-coalesced memory access pattern with this parameter
+            ipartj = (ipartj + threadIdx.x * gap) % n;
+
+        float3 fij = get_force(xm[ipartj], xmi, epsilon2);
+        force = make_float3(force.x + fij.x, force.y + fij.y, force.z + fij.z);
+    }
+
+    force_out[ipart] = force;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                        Good Force Kernel                                       */
+/* ---------------------------------------------------------------------------------------------- */
+
 
 __global__ void DirectSummationForce(
     const PosMass *xm,
@@ -77,7 +110,7 @@ __global__ void DirectSummationForce(
     }
 
     if(ipart < n)
-        force_out[blockIdx.x * blockDim.x + threadIdx.x] = force;
+        force_out[ipart] = force;
 }
 
 #endif
