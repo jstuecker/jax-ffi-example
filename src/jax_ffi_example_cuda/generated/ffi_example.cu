@@ -29,7 +29,7 @@ ffi::Error MultiplyFFIHost(
     ffi::AnyBuffer x,
     ffi::AnyBuffer y,
     ffi::Result<ffi::AnyBuffer> output,
-    int num,
+    size_t num,
     size_t grid_size,
     size_t block_size
 ) {
@@ -65,7 +65,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // x
         .Arg<ffi::AnyBuffer>() // y
         .Ret<ffi::AnyBuffer>() // output
-        .Attr<int>("num")
+        .Attr<size_t>("num")
         .Attr<size_t>("grid_size")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
@@ -79,14 +79,13 @@ ffi::Error DirectSummationForceFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer xm,
     ffi::Result<ffi::AnyBuffer> force_out,
-    int n,
     float epsilon,
-    size_t grid_size,
     size_t block_size
 ) {
+    int n = xm.element_count()/4;
     dim3 blockDim(block_size);
-    dim3 gridDim(grid_size);
-    size_t smem = 0;
+    dim3 gridDim((n + blockDim.x - 1)/blockDim.x);
+    size_t smem = blockDim.x * sizeof(float3);
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
@@ -114,9 +113,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // xm
         .Ret<ffi::AnyBuffer>() // force_out
-        .Attr<int>("n")
         .Attr<float>("epsilon")
-        .Attr<size_t>("grid_size")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );

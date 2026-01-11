@@ -23,7 +23,7 @@ __global__ void Multiply(
     const float* x,
     const float* y,
     float* output,
-    int num
+    size_t num
 ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if(idx > num)
