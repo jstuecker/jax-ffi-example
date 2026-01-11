@@ -1,0 +1,10 @@
+{
+    "python.testing.cwd": "${workspaceFolder}/checks",
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.terminal.executeInFileDir": true,
+
+    "comment-divider.length": 100,
+
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+}
