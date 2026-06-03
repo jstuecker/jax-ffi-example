@@ -1,4 +1,4 @@
-# JAX-FFI-Exampple
+# JAX-FFI-Example
 
 # Requirements
 * `jax_ffi_gen`
